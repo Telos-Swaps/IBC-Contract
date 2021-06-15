@@ -1,11 +1,28 @@
 void bridge::on_transfer(name from, name to, asset quantity, string memo) {
-    settings_t _settings_table( get_self(), get_self().value );
-    auto _settings = _settings_table.get();
-    tokens_table _tokens_table( get_self(), get_self().value );
+    auto settings = get_settings();
 
-    check_enabled();
-
+    // allow maintenance when bridge disabled
     if (from == get_self() || from == "eosio.ram"_n || from == "eosio.stake"_n || from == "eosio.rex"_n) return;
+
+    // check bridge
+    check( settings.enabled, "bridge disabled");
+
+    // check channel
+    const memo_x_transfer &memo_object = parse_memo(memo);
+    std::string channel(memo_object.to_blockchain);
+    std::transform(channel.begin(), channel.end(), channel.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    name channel_name = name(channel);
+    check( settings.current_chain_name != channel_name,"cannot send to the same chain");
+
+    channels_table channels( get_self(), get_self().value );
+    auto channel_itt = channels.find( channel_name.value );
+    check( channel_itt != channels.end(), "unknown channel, \"" + channel + "\"" );
+    check( channel_itt-> enabled, "channel disabled");
+
+    // check token
+    tokens_table _tokens_table( get_self(), channel_name.value );
 
     auto _token = _tokens_table.get( quantity.symbol.code().raw(), "token not found" );
     check(to == get_self(), "contract not involved in transfer");
@@ -13,19 +30,9 @@ void bridge::on_transfer(name from, name to, asset quantity, string memo) {
     check(quantity.symbol == _token.token_info.get_symbol(), "correct token contract, but wrong symbol");
     check(quantity >= _token.min_quantity, "sent quantity is less than required min quantity");
 
-    const memo_x_transfer &memo_object = parse_memo(memo);
-
-    std::string to_blockchain(memo_object.to_blockchain);
-    std::transform(to_blockchain.begin(), to_blockchain.end(), to_blockchain.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    name to_blockchain_name = name(to_blockchain);
-
-    check(to_blockchain_name == name("eos") || to_blockchain_name == name("telos"),
-          "invalid memo: target blockchain \"" + to_blockchain + "\" is not valid");
-    check(_settings.current_chain_name != to_blockchain_name,"cannot send to the same chain");
+    // we cannot check remote account but at least verify is correct size
     check(memo_object.to_account.size() > 0 && memo_object.to_account.size() < 13,
           "invalid memo: target name \"" + memo_object.to_account + "\" is not valid");
 
-    register_transfer(to_blockchain_name, from, name(memo_object.to_account), quantity, memo_object.memo, false);
+    register_transfer( channel_name, from, name(memo_object.to_account), quantity, memo_object.memo, false );
 }

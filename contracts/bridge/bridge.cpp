@@ -3,6 +3,7 @@
 
 #include "src/util.cpp"
 #include "src/setting.cpp"
+#include "src/channels.cpp"
 #include "src/reporter.cpp"
 #include "src/token.cpp"
 #include "src/fees.cpp"

@@ -1,6 +1,6 @@
-void bridge::free_ram() {
-    reports_t _reports_table( get_self(), get_self().value );
-    transfers_t _transfers_table( get_self(), get_self().value );
+void bridge::free_ram( const name& channel ) {
+    reports_t _reports_table( get_self(), channel.value );
+    transfers_t _transfers_table( get_self(), channel.value );
 
     // delete 2 expired transfers and 2 expired reports
     uint64_t now = current_time_point().sec_since_epoch();
@@ -19,7 +19,7 @@ void bridge::free_ram() {
          count++, it = reports_by_expiry.lower_bound(0)) {
         // track reports that were not executed and where no refund was initiated
         if (!it->executed && !it->failed) {
-            expired_reports_t expired_reports_table(get_self(), get_self().value);
+            expired_reports_t expired_reports_table(get_self(), channel.value);
             expired_reports_table.emplace(get_self(), [&](auto &x) { x = *it; });
         }
         reports_by_expiry.erase(it);

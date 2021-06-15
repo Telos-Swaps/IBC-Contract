@@ -4,6 +4,20 @@
     "types": [],
     "structs": [
         {
+            "name": "addchannel",
+            "base": "",
+            "fields": [
+                {
+                    "name": "channel_name",
+                    "type": "name"
+                },
+                {
+                    "name": "remote_contract",
+                    "type": "name"
+                }
+            ]
+        },
+        {
             "name": "addreporter",
             "base": "",
             "fields": [
@@ -18,6 +32,10 @@
             "base": "",
             "fields": [
                 {
+                    "name": "channel",
+                    "type": "name"
+                },
+                {
                     "name": "token_symbol",
                     "type": "extended_symbol"
                 },
@@ -30,12 +48,30 @@
                     "type": "asset"
                 },
                 {
-                    "name": "remote_chain",
+                    "name": "remote_token",
+                    "type": "extended_symbol"
+                },
+                {
+                    "name": "enabled",
+                    "type": "bool"
+                }
+            ]
+        },
+        {
+            "name": "channels",
+            "base": "",
+            "fields": [
+                {
+                    "name": "channel_name",
                     "type": "name"
                 },
                 {
-                    "name": "remote_token",
-                    "type": "extended_symbol"
+                    "name": "remote_contract",
+                    "type": "name"
+                },
+                {
+                    "name": "next_transfer_id",
+                    "type": "uint64"
                 },
                 {
                     "name": "enabled",
@@ -48,6 +84,10 @@
             "base": "",
             "fields": [
                 {
+                    "name": "channel",
+                    "type": "name"
+                },
+                {
                     "name": "count",
                     "type": "uint64"
                 }
@@ -58,6 +98,10 @@
             "base": "",
             "fields": [
                 {
+                    "name": "channel",
+                    "type": "name"
+                },
+                {
                     "name": "ids",
                     "type": "uint64[]"
                 }
@@ -67,6 +111,10 @@
             "name": "cleartransfers",
             "base": "",
             "fields": [
+                {
+                    "name": "channel_name",
+                    "type": "name"
+                },
                 {
                     "name": "ids",
                     "type": "uint64[]"
@@ -92,6 +140,10 @@
                     "type": "name"
                 },
                 {
+                    "name": "channel",
+                    "type": "name"
+                },
+                {
                     "name": "report_id",
                     "type": "uint64"
                 }
@@ -103,6 +155,10 @@
             "fields": [
                 {
                     "name": "reporter",
+                    "type": "name"
+                },
+                {
+                    "name": "channel",
                     "type": "name"
                 },
                 {
@@ -126,24 +182,6 @@
             ]
         },
         {
-            "name": "fees",
-            "base": "",
-            "fields": [
-                {
-                    "name": "total",
-                    "type": "asset"
-                },
-                {
-                    "name": "reserve",
-                    "type": "asset"
-                },
-                {
-                    "name": "last_distribution",
-                    "type": "time_point_sec"
-                }
-            ]
-        },
-        {
             "name": "info_row",
             "base": "",
             "fields": [
@@ -162,6 +200,10 @@
             "base": "",
             "fields": [
                 {
+                    "name": "admin_account",
+                    "type": "name"
+                },
+                {
                     "name": "current_chain_name",
                     "type": "name"
                 },
@@ -172,17 +214,8 @@
                 {
                     "name": "threshold",
                     "type": "uint8"
-                },
-                {
-                    "name": "fees_percentage",
-                    "type": "float64"
                 }
             ]
-        },
-        {
-            "name": "issuefees",
-            "base": "",
-            "fields": []
         },
         {
             "name": "microseconds",
@@ -200,6 +233,10 @@
             "fields": [
                 {
                     "name": "reporter",
+                    "type": "name"
+                },
+                {
+                    "name": "channel",
                     "type": "name"
                 },
                 {
@@ -271,6 +308,10 @@
             "base": "",
             "fields": [
                 {
+                    "name": "admin_account",
+                    "type": "name"
+                },
+                {
                     "name": "current_chain_name",
                     "type": "name"
                 },
@@ -279,20 +320,12 @@
                     "type": "bool"
                 },
                 {
-                    "name": "next_transfer_id",
-                    "type": "uint64"
-                },
-                {
                     "name": "expire_after",
                     "type": "microseconds"
                 },
                 {
                     "name": "threshold",
                     "type": "uint8"
-                },
-                {
-                    "name": "fees_percentage",
-                    "type": "float64"
                 }
             ]
         },
@@ -300,6 +333,10 @@
             "name": "tokens",
             "base": "",
             "fields": [
+                {
+                    "name": "channel",
+                    "type": "name"
+                },
                 {
                     "name": "token_info",
                     "type": "extended_symbol"
@@ -311,10 +348,6 @@
                 {
                     "name": "min_quantity",
                     "type": "asset"
-                },
-                {
-                    "name": "remote_chain",
-                    "type": "name"
                 },
                 {
                     "name": "remote_token",
@@ -381,16 +414,16 @@
             "base": "",
             "fields": [
                 {
+                    "name": "channel",
+                    "type": "name"
+                },
+                {
                     "name": "expire_after_seconds",
                     "type": "uint32"
                 },
                 {
                     "name": "threshold",
                     "type": "uint64"
-                },
-                {
-                    "name": "fees_percentage",
-                    "type": "float64"
                 }
             ]
         },
@@ -398,6 +431,10 @@
             "name": "updatetoken",
             "base": "",
             "fields": [
+                {
+                    "name": "channel",
+                    "type": "name"
+                },
                 {
                     "name": "token_symbol",
                     "type": "extended_symbol"
@@ -414,6 +451,11 @@
         }
     ],
     "actions": [
+        {
+            "name": "addchannel",
+            "type": "addchannel",
+            "ricardian_contract": ""
+        },
         {
             "name": "addreporter",
             "type": "addreporter",
@@ -460,11 +502,6 @@
             "ricardian_contract": ""
         },
         {
-            "name": "issuefees",
-            "type": "issuefees",
-            "ricardian_contract": ""
-        },
-        {
             "name": "report",
             "type": "report",
             "ricardian_contract": ""
@@ -487,8 +524,8 @@
     ],
     "tables": [
         {
-            "name": "fees",
-            "type": "fees",
+            "name": "channels",
+            "type": "channels",
             "index_type": "i64",
             "key_names": [],
             "key_types": []

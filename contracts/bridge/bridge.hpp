@@ -16,7 +16,7 @@ public:
     using contract::contract;
 
     /**
-     *
+     * Metadata about the contract and project
      */
     struct [[eosio::table("info.row")]] info_row {
         name                        key;
@@ -30,23 +30,35 @@ public:
      *
      */
     struct [[eosio::table("settings")]] settings {
+        name admin_account;
         name current_chain_name;
         bool enabled;
-        uint64_t next_transfer_id = 0;
         eosio::microseconds expire_after = days(7); // duration after which transfers and reports expire can be evicted from RAM
         uint8_t threshold;                          // how many reporters need to report a transfer for it to be confirmed
-        double fees_percentage = 0.002;             // transaction fee
     };
-    typedef eosio::singleton<"settings"_n, settings> settings_t;
+    typedef eosio::singleton<"settings"_n, settings> settings_singleton;
+
+    /*
+     *
+     */
+    struct [[eosio::table("channels")]] channels {
+        name channel_name;
+        name remote_contract;
+        uint64_t next_transfer_id = 0;
+        bool enabled = true;
+
+        uint64_t primary_key()const { return channel_name.value; }
+    };
+    typedef eosio::multi_index< "channels"_n, channels > channels_table;
 
     /*
      *
      */
     struct [[eosio::table("tokens")]] tokens {
+        name channel;
         extended_symbol token_info;                  // stores info about the token that needs to be issued
         bool do_issue;                               // whether tokens should be issued or taken from the contract balance
         asset min_quantity;                          // minimum transfer quantity
-        name remote_chain;
         extended_symbol remote_token;
         bool enabled;
 
@@ -60,20 +72,8 @@ public:
     /*
      *
      */
-    struct [[eosio::table("fees")]] fees {
-        asset total;
-        asset reserve;
-        time_point_sec last_distribution;
-
-        uint64_t primary_key()const { return total.symbol.code().raw(); }
-    };
-    typedef eosio::multi_index< "fees"_n, fees > fees_t;
-
-    /*
-     *
-     */
     struct [[eosio::table("transfer")]] transfer_s {
-        uint64_t id; // settings.next_transfer_id
+        uint64_t id; // tokens_table.next_transfer_id
         checksum256 transaction_id;
         name from_blockchain;
         name to_blockchain;
@@ -145,49 +145,47 @@ public:
 
     /**
      *
+     * @param admin_account
      * @param current_chain_name
-     * @param token_info
      * @param expire_after_seconds
-     * @param do_issue
      * @param threshold
-     * @param fees_percentage
-     * @param min_quantity
      */
     [[eosio::action]]
-    void init(name current_chain_name, uint32_t expire_after_seconds, uint8_t threshold, double fees_percentage);
+    void init( name admin_account, name current_chain_name, uint32_t expire_after_seconds, uint8_t threshold );
+
+    [[eosio::action]]
+    void addchannel( name& channel_name, name& remote_contract );
 
     /**
      *
-     * @param remote_token
-     * @param token_info
-     * @param enabled
+     * @param channel
+     * @param token_symbol
      * @param do_issue
      * @param min_quantity
-     */
-    [[eosio::action]]
-    void addtoken( extended_symbol token_symbol, bool do_issue, asset min_quantity, name remote_chain, extended_symbol remote_token, bool enabled );
-
-    /**
-     *
      * @param remote_token
      * @param enabled
-     * @param min_quantity
      */
     [[eosio::action]]
-    void updatetoken( extended_symbol token_symbol, asset min_quantity, bool enabled );
+    void addtoken( const name &channel, extended_symbol token_symbol, bool do_issue, asset min_quantity, extended_symbol remote_token, bool enabled );
 
-/*
-    [[eosio::action]]
-    void fixtoken( extended_symbol token_symbol, extended_symbol remote_token );
-*/
     /**
      *
-     * @param threshold
-     * @param fees_percentage
-     * @param expire_after_seconds
+     * @param channel
+     * @param token_symbol
+     * @param min_quantity
+     * @param enabled
      */
     [[eosio::action]]
-    void update( uint32_t expire_after_seconds, uint64_t threshold, double fees_percentage );
+    void updatetoken( const name& channel, const extended_symbol& token_symbol, const asset& min_quantity, const bool& enabled );
+
+    /**
+     *
+     * @param channel
+     * @param expire_after_seconds
+     * @param threshold
+     */
+    [[eosio::action]]
+    void update( const name& channel, const uint32_t& expire_after_seconds, const uint64_t& threshold );
 
     /**
      *
@@ -212,54 +210,54 @@ public:
 
     /**
      *
+     * @param channel_name
      * @param ids
      */
     [[eosio::action("clear.trans")]]
-    void cleartransfers(std::vector<uint64_t> ids);
+    void cleartransfers( const name& channel_name, std::vector<uint64_t> ids );
 
     /**
      *
+     * @param channel
      * @param ids
      */
     [[eosio::action("clear.rep")]]
-    void clearreports(std::vector<uint64_t> ids);
+    void clearreports( const name& channel, std::vector<uint64_t> ids );
 
     /**
      *
+     * @param channel
      * @param count
      */
     [[eosio::action("clear.exp")]]
-    void clearexpired(uint64_t count);
-
-    /**
-     *
-     */
-    [[eosio::action]]
-    void issuefees();
+    void clearexpired( const name &channel, const uint64_t &count );
 
     /**
      *
      * @param reporter
+     * @param channel
      * @param transfer
      */
     [[eosio::action]]
-    void report(name reporter, const transfer_s &transfer);
+    void report( const name& reporter, const name& channel, const transfer_s& transfer );
 
     /**
      *
      * @param reporter
+     * @param channel
      * @param report_id
      */
     [[eosio::action]]
-    void exec(name reporter, uint64_t report_id);
+    void exec( const name& reporter, const name& channel, const uint64_t& report_id );
 
     /**
      *
      * @param reporter
+     * @param channel
      * @param report_id
      */
     [[eosio::action]]
-    void execfailed(name reporter, uint64_t report_id);
+    void execfailed( const name& reporter, const name& channel, const uint64_t& report_id );
 
     /**
      *
@@ -275,10 +273,14 @@ public:
                       const string     memo );
 
 private:
-    void register_transfer(const name &to_blockchain, const name &from,const name &to_account,
-            const asset &quantity, const string& memo, bool is_refund);
-    void reporter_worked(const name &reporter);
-    void free_ram();
+    settings get_settings();
+
+    bool channel_exists( name channel_name );
+
+    void register_transfer( const name& channel_name, const name& from, const name& to_account,
+                            const asset& quantity, const string& memo, bool is_refund );
+    void reporter_worked(const name& reporter);
+    void free_ram( const name& channel );
 
     checksum256 get_trx_id() {
         size_t size = transaction_size();
@@ -295,7 +297,7 @@ private:
         string memo;
     };
 
-    memo_x_transfer parse_memo(string memo) {
+    memo_x_transfer parse_memo( string memo ) {
         string to_memo = "";
         if (memo.find("|") != string::npos) {
             auto major_parts = split(memo, "|"); // split the memo by "|"
@@ -315,15 +317,10 @@ private:
 
     void check_reporter(name reporter) {
         reporters_t _reporters_table( get_self(), get_self().value );
-        auto existing = _reporters_table.find(reporter.value);
+//        auto existing = _reporters_table.find(reporter.value);
 
-        check(existing != _reporters_table.end(), "the signer is not a known reporter");
-    }
-
-    void check_enabled() {
-        settings_t _settings_table( get_self(), get_self().value );
-        auto _settings = _settings_table.get();
-        check(_settings.enabled, "reporting is disabled");
+//        check(existing != _reporters_table.end(), "the signer is not a known reporter");
+        check( _reporters_table.find(reporter.value) != _reporters_table.end(), "the signer is not a known reporter" );
     }
 
     /**
@@ -332,20 +329,13 @@ private:
      * @param chain_name
      * @return
      */
-    name get_ibc_contract_for_chain(name chain_name) {
-        switch (chain_name.value) {
-            case name("eos").value: {
-                return name("eosibc");
-            }
-            case name("telos").value: {
-                return name("telosibc");
-            }
-            default:
-                check(false, "no ibc contract for chain registered");
-        }
+    name get_ibc_contract_for_channel(name channel) {
+        channels_table channels( get_self(), get_self().value );
+        auto channel_itt = channels.find( channel.value );
+        check( channel_itt != channels.end(), "unknown channel, \"" + channel.to_string() + "\"" );
+        check( channel_itt->enabled, "channel disabled");
 
-        // make compiler happy
-        return name("");
+        return channel_itt->remote_contract;
     }
 
     uint32_t get_num_reporters() {

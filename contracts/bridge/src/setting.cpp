@@ -1,17 +1,17 @@
-void bridge::init(name current_chain_name, uint32_t expire_after_seconds, uint8_t threshold, double fees_percentage) {
-
-    settings_t _settings_table( get_self(), get_self().value );
-    fees_t _fees_table( get_self(), get_self().value );
+void bridge::init( name admin_account, name current_chain_name, uint32_t expire_after_seconds, uint8_t threshold ) {
+    settings_singleton _settings_table( get_self(), get_self().value );
 
     require_auth(get_self());
 
     bool settings_exists = _settings_table.exists();
 
-    check(!settings_exists, "settings already defined");
-    check(threshold > 0, "threshold must be positive");
+    check( !settings_exists, "settings already defined" );
+    check( is_account( admin_account ), "admin account does not exist");
+    check( threshold > 0, "threshold must be positive" );
 
     _settings_table.set(
             settings{
+                    .admin_account = admin_account,
                     .current_chain_name = current_chain_name,
                     .enabled = false,
                     .expire_after = seconds(expire_after_seconds),
@@ -20,10 +20,10 @@ void bridge::init(name current_chain_name, uint32_t expire_after_seconds, uint8_
             get_self());
 }
 
-void bridge::update( uint32_t expire_after_seconds, uint64_t threshold, double fees_percentage ) {
-    settings_t _settings_table( get_self(), get_self().value );
+void bridge::update( const name& channel, const uint32_t& expire_after_seconds, const uint64_t& threshold ) {
+    settings_singleton _settings_table( get_self(), get_self().value );
     auto _settings = _settings_table.get();
-    reports_t _reports_table( get_self(), get_self().value );
+    reports_t _reports_table( get_self(), channel.value );
 
     require_auth(get_self());
 
@@ -31,7 +31,6 @@ void bridge::update( uint32_t expire_after_seconds, uint64_t threshold, double f
 
     _settings.threshold = threshold;
     _settings.expire_after = seconds(expire_after_seconds);
-    _settings.fees_percentage = fees_percentage;
     _settings_table.set(_settings, get_self());
 
     // need to update all unconfirmed reports and check if they are now confirmed
@@ -44,12 +43,19 @@ void bridge::update( uint32_t expire_after_seconds, uint64_t threshold, double f
     }
 }
 
-void bridge::enable(bool enable) {
-    settings_t _settings_table( get_self(), get_self().value );
-    auto _settings = _settings_table.get();
+void bridge::enable( bool enable ) {
+    settings_singleton settings_table(get_self(), get_self().value);
+    check(settings_table.exists(), "contract not initialised");
+    auto settings = settings_table.get();
 
-    require_auth(get_self());
+    require_auth( settings.admin_account );
 
-    _settings.enabled = enable;
-    _settings_table.set(_settings, get_self());
+    settings.enabled = enable;
+    settings_table.set(settings, get_self());
+}
+
+bridge::settings bridge::get_settings() {
+    settings_singleton settings_table(get_self(), get_self().value);
+    check(settings_table.exists(), "contract not initialised");
+    return settings_table.get();
 }

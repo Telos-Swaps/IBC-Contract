@@ -1,22 +1,28 @@
-void bridge::report(name reporter, const transfer_s &transfer) {
-    settings_t _settings_table( get_self(), get_self().value );
-    auto _settings = _settings_table.get();
-    reports_t _reports_table( get_self(), get_self().value );
+void bridge::report( const name& reporter, const name& channel, const transfer_s& transfer) {
+    auto settings = get_settings();
 
-    check_enabled();
     require_auth(reporter);
     check_reporter(reporter);
     reporter_worked(reporter);
     check(transfer.expires_at > current_time_point(), "transfer already expired");
-    free_ram();
+    free_ram( channel );
 
     // we don't want report to fail, report anything at this point it will fail at execute and then
-    // initiate a refund check(is_account(transfer.to_account), "to account does not exist");
+    // initiate a refund
+    // check(is_account(transfer.to_account), "to account does not exist");
+
+    // TODO we don't want report to fail, report anything at this point it will fail at execute and then
+    // initiate a refund
+    // check( channel == name(transfer.from_blockchain), "channel is invalid" )
+
+    reports_t _reports_table( get_self(), channel.value );
 
     uint128_t transfer_id = report_s::_by_transfer_id(transfer);
+
     auto reports_by_transfer = _reports_table.get_index<"bytransferid"_n>();
     auto report = reports_by_transfer.lower_bound(transfer_id);
     bool new_report = report == reports_by_transfer.upper_bound(transfer_id);
+
     if (!new_report) {
         new_report = true;
         // check and find report with same transfer data
@@ -31,27 +37,21 @@ void bridge::report(name reporter, const transfer_s &transfer) {
 
     // first reporter
     if (new_report) {
-//        const auto report_id = _settings.next_report_id;
-//        _settings.next_report_id += 1;
-
-        // _reports_table.emplace(reporter, [&](auto &s) {
-        // move ram billing to this contract
         _reports_table.emplace(get_self(), [&](auto &s) {
             auto reserved_capacity = get_num_reporters();
             s.id = _reports_table.available_primary_key();
             s.transfer = transfer;
-            // let first reporter pay for RAM
+            // NA let first reporter pay for RAM
             // need to add actual elements because capacity is not serialized
             // does not work: s.confirmed_by.reserve(reserved_capacity);
             s.confirmed_by = std::vector<name>(reserved_capacity, eosio::name(""));
             push_first_free(s.confirmed_by, reporter);
 
             s.failed_by = std::vector<name>(reserved_capacity, eosio::name(""));
-            s.confirmed = 1 >= _settings.threshold;
+            s.confirmed = 1 >= settings.threshold;
             s.executed = false;
         });
 
-//        _settings_table.set(_settings, get_self());
     } else {
         // checks that the reporter didn't already report the transfer
         check(std::find(report->confirmed_by.begin(), report->confirmed_by.end(),reporter) == report->confirmed_by.end(),
@@ -60,22 +60,23 @@ void bridge::report(name reporter, const transfer_s &transfer) {
         // can use same_payer here because confirmed_by has enough capacity unless a new reporter was added in between
         reports_by_transfer.modify(report, eosio::same_payer, [&](auto &s) {
             push_first_free(s.confirmed_by, reporter);
-            s.confirmed = count_non_empty(s.confirmed_by) >= _settings.threshold;
+            s.confirmed = count_non_empty(s.confirmed_by) >= settings.threshold;
         });
     }
 }
 
-void bridge::exec(name reporter, uint64_t report_id) {
-    settings_t _settings_table( get_self(), get_self().value );
+void bridge::exec( const name& reporter, const name& channel, const uint64_t& report_id ) {
+    settings_singleton _settings_table( get_self(), get_self().value );
     auto _settings = _settings_table.get();
-    reports_t _reports_table( get_self(), get_self().value );
-    tokens_table _tokens_table( get_self(), get_self().value );
+    check(_settings.enabled, "bridge disabled");
 
-    check_enabled();
+    reports_t _reports_table( get_self(), channel.value );
+    tokens_table _tokens_table( get_self(), channel.value );
+
     require_auth(reporter);
     check_reporter(reporter);
     reporter_worked(reporter);
-    free_ram();
+    free_ram(channel);
 
     auto report = _reports_table.find(report_id);
     check(report != _reports_table.end(), "report does not exist");
@@ -108,17 +109,19 @@ void bridge::exec(name reporter, uint64_t report_id) {
     });
 }
 
-void bridge::execfailed(name reporter, uint64_t report_id) {
-    settings_t _settings_table( get_self(), get_self().value );
+void bridge::execfailed( const name& reporter, const name& channel, const uint64_t& report_id ) {
+    settings_singleton _settings_table( get_self(), get_self().value );
     auto _settings = _settings_table.get();
-    reports_t _reports_table( get_self(), get_self().value );
-    tokens_table _tokens_table( get_self(), get_self().value );
 
-    check_enabled();
+    check(_settings.enabled, "bridge disabled");
+
+    reports_t _reports_table( get_self(), channel.value );
+    tokens_table _tokens_table( get_self(), channel.value );
+
     require_auth(reporter);
     check_reporter(reporter);
     reporter_worked(reporter);
-    free_ram();
+    free_ram(channel);
 
     auto report = _reports_table.find(report_id);
     check(report != _reports_table.end(), "report does not exist");
@@ -147,30 +150,30 @@ void bridge::execfailed(name reporter, uint64_t report_id) {
             // failed_transfers_table.emplace(get_self(),
             //                                [&](auto &x) { x = report->transfer; });
         } else {
-            auto to_blockchain = report->transfer.from_blockchain;
-            auto from = get_ibc_contract_for_chain(report->transfer.to_blockchain);
+            auto channel_name = report->transfer.from_blockchain;
+            auto from = get_ibc_contract_for_channel( report->transfer.from_blockchain );
             auto to = report->transfer.from_account;
             auto quantity = asset(report->transfer.quantity.amount, _token.token_info.get_symbol());
-            register_transfer(to_blockchain, from, to, quantity, "refund", true);
+            register_transfer( channel_name, from, to, quantity, "refund", true );
         }
     }
 }
 
-void bridge::clearexpired(uint64_t count) {
-    reports_t _reports_table( get_self(), get_self().value );
+void bridge::clearexpired( const name &channel, const uint64_t &count ) {
+    reports_t _reports_table( get_self(), channel.value );
 
     require_auth(get_self());
 
     auto current_count = 0;
-    expired_reports_t expired_reports_table(get_self(), get_self().value);
+    expired_reports_t expired_reports_table(get_self(), channel.value);
     for ( auto it = expired_reports_table.begin(); it != expired_reports_table.end() && current_count < count; current_count++, it++) {
         expired_reports_table.erase(it);
     }
 }
 
 // must make sure to always clear transfers on other chain first otherwise would report twice
-void bridge::clearreports(std::vector<uint64_t> ids) {
-    reports_t _reports_table( get_self(), get_self().value );
+void bridge::clearreports( const name& channel, std::vector<uint64_t> ids ) {
+    reports_t _reports_table( get_self(), channel.value );
 
     require_auth(get_self());
 

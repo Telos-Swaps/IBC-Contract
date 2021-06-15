@@ -1,25 +1,23 @@
-void bridge::register_transfer(const name &to_blockchain, const name &from, const name &to_account,
-                               const asset &quantity, const string &memo, bool is_refund) {
+void bridge::register_transfer( const name& channel_name, const name& from, const name& to_account,
+                                const asset& quantity, const string& memo, bool is_refund ) {
 
-    check_enabled();
+    settings_singleton settings_table( get_self(), get_self().value );
+    auto settings = settings_table.get();
 
-    settings_t _settings_table( get_self(), get_self().value );
-    auto _settings = _settings_table.get();
-    fees_t _fees_table( get_self(), get_self().value );
-    transfers_t _transfers_table( get_self(), get_self().value );
-    tokens_table _tokens_table( get_self(), get_self().value );
+    check( settings.enabled, "bridge disabled");
 
-    const auto transfer_id = _settings.next_transfer_id;
-    _settings.next_transfer_id += 1;
+    channels_table channels( get_self(), get_self().value );
+    auto channel_itt = channels.find( channel_name.value );
+    check( channel_itt != channels.end(), "unknown channel, \"" + channel_name.to_string() + "\"" );
+//    check( channel_itt-> enabled, "channel disabled");
 
-    auto _fees_itr = _fees_table.find( quantity.symbol.code().raw() );
-    check( _fees_itr != _fees_table.end(), "token not found");
-    auto _fees = *_fees_itr;
 
-    auto fees = asset(is_refund ? 0 : _settings.fees_percentage * quantity.amount, quantity.symbol);
-    auto quantity_after_fees = quantity - fees;
-    _fees.reserve += fees;
-    _fees.total += fees;
+    transfers_t _transfers_table( get_self(), channel_name.value );
+    tokens_table _tokens_table( get_self(), channel_name.value );
+
+    const auto transfer_id = channel_itt->next_transfer_id;
+
+    print(">>> ", channel_name, ", ", quantity.to_string() );
 
     auto _token = _tokens_table.get( quantity.symbol.code().raw(), "token not found" );
 
@@ -27,14 +25,14 @@ void bridge::register_transfer(const name &to_blockchain, const name &from, cons
     _transfers_table.emplace(get_self(), [&](auto &x) {
         x.id = transfer_id;
         x.transaction_id = get_trx_id();
-        x.from_blockchain = _settings.current_chain_name;
-        x.to_blockchain = to_blockchain;
+        x.from_blockchain = settings.current_chain_name;
+        x.to_blockchain = channel_name;
         x.from_account = from;
         x.to_account = to_account;
-        x.quantity = quantity_after_fees;
+        x.quantity = quantity;
         x.memo = memo;
         x.transaction_time = current_time_point();
-        x.expires_at = current_time_point() + _settings.expire_after;
+        x.expires_at = current_time_point() + settings.expire_after;
         x.is_refund = is_refund;
     });
 
@@ -42,18 +40,16 @@ void bridge::register_transfer(const name &to_blockchain, const name &from, cons
         // we never want proxy tokens that are not backed by real tokens, issue and retire as required
         // to mantain integrity of supply
         token::retire_action retire_act(_token.token_info.get_contract(), {get_self(), "active"_n});
-        retire_act.send( quantity_after_fees, "retire on transfer" );
+        retire_act.send( quantity, "retire on transfer" );
     }
 
-    _fees_table.modify(_fees_itr, get_self(), [&](auto &s) {
-        s = _fees;
+    channels.modify(channel_itt, get_self(), [&](auto &c) {
+        c.next_transfer_id += 1;
     });
-
-    _settings_table.set(_settings, get_self());
 }
 
-void bridge::cleartransfers(std::vector<uint64_t> ids) {
-    transfers_t _transfers_table( get_self(), get_self().value );
+void bridge::cleartransfers( const name& channel_name, std::vector<uint64_t> ids ) {
+    transfers_t _transfers_table( get_self(), channel_name.value );
 
     require_auth(get_self());
 
